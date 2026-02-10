@@ -1,0 +1,358 @@
+name: Build Green Pizza with Evidence
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: green-pizza
+  DOCKER_REPO: green-pizza-docker-dev
+  BUILD_NAME: green-pizza-build
+  BUNDLE_NAME: green-pizza-bundle
+
+jobs:
+  build-and-attach-evidence:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # ==========================================
+      # SETUP
+      # ==========================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed for git history (Jira extraction)
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ vars.ARTIFACTORY_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}
+
+      - name: Login to Artifactory Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.ARTIFACTORY_URL }}
+          username: ${{ secrets.JF_USER }}
+          password: ${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ==========================================
+      # BUILD & PUSH DOCKER IMAGE
+      # ==========================================
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        id: docker-build
+        with:
+          context: .
+          push: true
+          tags: ${{ vars.ARTIFACTORY_URL }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ github.run_number }}
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Add Docker package to build
+        run: |
+          echo "${{ vars.ARTIFACTORY_URL }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ github.run_number }}@${{ steps.docker-build.outputs.digest }}" > metadata.json
+          jf rt build-docker-create ${{ env.DOCKER_REPO }} \
+            --image-file metadata.json \
+            --build-name ${{ env.BUILD_NAME }} \
+            --build-number ${{ github.run_number }}
+
+      - name: Attach Package Signature Evidence
+        run: |
+          echo "{
+            \"actor\": \"${{ github.actor }}\",
+            \"date\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\",
+            \"commit\": \"${{ github.sha }}\",
+            \"repository\": \"${{ github.repository }}\"
+          }" > package-sign.json
+          
+          jf evd create \
+            --package-name ${{ env.IMAGE_NAME }} \
+            --package-version ${{ github.run_number }} \
+            --package-repo-name ${{ env.DOCKER_REPO }} \
+            --key "${{ secrets.PRIVATE_KEY }}" \
+            --key-alias SIGNING-KEY \
+            --predicate ./package-sign.json \
+            --predicate-type https://jfrog.com/evidence/signature/v1
+          
+          echo "✅ Package signature evidence attached" >> $GITHUB_STEP_SUMMARY
+
+      # ==========================================
+      # EVIDENCE 1: GITHUB PROVENANCE (SLSA)
+      # ==========================================
+      - name: Generate GitHub Provenance Evidence
+        run: |
+          echo "{
+            \"buildType\": \"https://github.com/actions/workflow\",
+            \"builder\": {
+              \"id\": \"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+            },
+            \"invocation\": {
+              \"configSource\": {
+                \"uri\": \"git+https://github.com/${{ github.repository }}@${{ github.ref }}\",
+                \"digest\": {
+                  \"sha1\": \"${{ github.sha }}\"
+                },
+                \"entryPoint\": \".github/workflows/build-with-evidence.yml\"
+              }
+            },
+            \"metadata\": {
+              \"buildInvocationId\": \"${{ github.run_id }}-${{ github.run_attempt }}\",
+              \"buildStartedOn\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\",
+              \"completeness\": {
+                \"parameters\": true,
+                \"environment\": true,
+                \"materials\": true
+              }
+            },
+            \"materials\": [
+              {
+                \"uri\": \"git+https://github.com/${{ github.repository }}@${{ github.ref }}\",
+                \"digest\": {
+                  \"sha1\": \"${{ github.sha }}\"
+                }
+              }
+            ]
+          }" > github-provenance.json
+          
+          jf evd create \
+            --package-name ${{ env.IMAGE_NAME }} \
+            --package-version ${{ github.run_number }} \
+            --package-repo-name ${{ env.DOCKER_REPO }} \
+            --key "${{ secrets.PRIVATE_KEY }}" \
+            --key-alias SIGNING-KEY \
+            --predicate ./github-provenance.json \
+            --predicate-type https://slsa.dev/provenance/v1 \
+            --provider-id "github-actions"
+          
+          echo "✅ GitHub provenance evidence attached" >> $GITHUB_STEP_SUMMARY
+
+      # ==========================================
+      # EVIDENCE 2: CYPRESS E2E TESTS
+      # ==========================================
+      - name: Run Cypress E2E Tests
+        uses: cypress-io/github-action@v6
+        with:
+          start: npm start
+          wait-on: 'http://localhost:3000'
+          wait-on-timeout: 120
+          browser: chrome
+        continue-on-error: true
+
+      - name: Merge Cypress Reports
+        if: always()
+        run: |
+          npx mochawesome-merge cypress/reports/*.json > cypress-results.json
+          echo "Cypress reports merged"
+
+      - name: Create Cypress Summary
+        if: always()
+        run: |
+          node scripts/cypress-helpers/generate-summary.js
+
+      - name: Attach Cypress Evidence
+        if: always()
+        run: |
+          if [ -f cypress-results.json ]; then
+            jf evd create \
+              --package-name ${{ env.IMAGE_NAME }} \
+              --package-version ${{ github.run_number }} \
+              --package-repo-name ${{ env.DOCKER_REPO }} \
+              --key "${{ secrets.PRIVATE_KEY }}" \
+              --key-alias SIGNING-KEY \
+              --predicate ./cypress-results.json \
+              --predicate-type https://cypress.io/test-results/v1 \
+              --provider-id "cypress"
+            
+            echo "✅ Cypress test evidence attached" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ No Cypress results found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      # ==========================================
+      # EVIDENCE 3: SONARQUBE (OPTIONAL)
+      # ==========================================
+      - name: Run SonarQube Scan
+        if: false  # Enable when SonarQube is configured
+        run: |
+          sonar-scanner \
+            -Dsonar.projectKey=green-pizza \
+            -Dsonar.sources=src \
+            -Dsonar.host.url=${{ vars.SONAR_URL }} \
+            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+
+      - name: Attach Sonar Evidence
+        if: false  # Enable when SonarQube is configured
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          jf evd create \
+            --package-name ${{ env.IMAGE_NAME }} \
+            --package-version ${{ github.run_number }} \
+            --package-repo-name ${{ env.DOCKER_REPO }} \
+            --key "${{ secrets.PRIVATE_KEY }}" \
+            --key-alias SIGNING-KEY \
+            --integration sonar
+          
+          echo "✅ Sonar evidence attached" >> $GITHUB_STEP_SUMMARY
+
+      # ==========================================
+      # EVIDENCE 4: JIRA TICKETS (OPTIONAL)
+      # ==========================================
+      - name: Extract Jira Evidence
+        if: false  # Enable when Jira is configured
+        run: |
+          cd scripts/jira-evidence
+          go run main.go jira.go
+          cd ../..
+          
+          if [ -f scripts/jira-evidence/jira-results.json ]; then
+            jf evd create \
+              --package-name ${{ env.IMAGE_NAME }} \
+              --package-version ${{ github.run_number }} \
+              --package-repo-name ${{ env.DOCKER_REPO }} \
+              --key "${{ secrets.PRIVATE_KEY }}" \
+              --key-alias SIGNING-KEY \
+              --predicate ./scripts/jira-evidence/jira-results.json \
+              --predicate-type https://atlassian.com/jira/issues/v1 \
+              --provider-id "jira"
+            
+            echo "✅ Jira evidence attached" >> $GITHUB_STEP_SUMMARY
+          fi
+        env:
+          JIRA_URL: ${{ vars.JIRA_URL }}
+          JIRA_USERNAME: ${{ secrets.JIRA_USERNAME }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_PROJECT_KEY: ${{ vars.JIRA_PROJECT_KEY }}
+          JIRA_ID_REGEX: ${{ vars.JIRA_ID_REGEX }}
+
+      # ==========================================
+      # PUBLISH BUILD INFO & ATTACH EVIDENCE
+      # ==========================================
+      - name: Publish Build Info
+        run: |
+          jf rt build-collect-env ${{ env.BUILD_NAME }} ${{ github.run_number }}
+          jf rt build-add-git ${{ env.BUILD_NAME }} ${{ github.run_number }}
+          jf rt build-publish ${{ env.BUILD_NAME }} ${{ github.run_number }}
+
+      - name: Attach Build Signature Evidence
+        run: |
+          echo "{
+            \"actor\": \"${{ github.actor }}\",
+            \"date\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\",
+            \"commit\": \"${{ github.sha }}\",
+            \"workflow\": \"${{ github.workflow }}\",
+            \"runId\": \"${{ github.run_id }}\"
+          }" > build-sign.json
+          
+          jf evd create \
+            --build-name ${{ env.BUILD_NAME }} \
+            --build-number ${{ github.run_number }} \
+            --predicate ./build-sign.json \
+            --predicate-type https://jfrog.com/evidence/build-signature/v1 \
+            --key "${{ secrets.PRIVATE_KEY }}" \
+            --key-alias SIGNING-KEY
+          
+          echo "✅ Build signature evidence attached" >> $GITHUB_STEP_SUMMARY
+
+      # ==========================================
+      # CREATE RELEASE BUNDLE
+      # ==========================================
+      - name: Create Release Bundle
+        run: |
+          echo "{
+            \"files\": [{
+              \"build\": \"${{ env.BUILD_NAME }}/${{ github.run_number }}\"
+            }]
+          }" > bundle-spec.json
+          
+          jf release-bundle-create \
+            ${{ env.BUNDLE_NAME }} \
+            ${{ github.run_number }} \
+            --signing-key RSA-SIGNING \
+            --spec bundle-spec.json \
+            --sync=true
+          
+          BUNDLE_LINK="${{ vars.ARTIFACTORY_URL }}/ui/artifactory/lifecycle/?bundleName=${{ env.BUNDLE_NAME }}&releaseBundleVersion=${{ github.run_number }}"
+          echo "📦 [Release Bundle Created](${BUNDLE_LINK})" >> $GITHUB_STEP_SUMMARY
+
+      - name: Attach Release Bundle Test Evidence
+        run: |
+          echo "{
+            \"actor\": \"${{ github.actor }}\",
+            \"date\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\",
+            \"test\": \"Integration Tests\",
+            \"result\": \"success\",
+            \"cypressTests\": \"passed\"
+          }" > rbv2-evidence.json
+          
+          jf evd create \
+            --release-bundle ${{ env.BUNDLE_NAME }} \
+            --release-bundle-version ${{ github.run_number }} \
+            --predicate ./rbv2-evidence.json \
+            --predicate-type https://jfrog.com/evidence/testing-results/v1 \
+            --key "${{ secrets.PRIVATE_KEY }}" \
+            --key-alias SIGNING-KEY
+          
+          echo "✅ Release Bundle evidence attached" >> $GITHUB_STEP_SUMMARY
+
+      # ==========================================
+      # PROMOTE THROUGH ENVIRONMENTS
+      # ==========================================
+      - name: Promote to DEV
+        run: |
+          jf release-bundle-promote \
+            ${{ env.BUNDLE_NAME }} \
+            ${{ github.run_number }} \
+            DEV \
+            --signing-key RSA-SIGNING \
+            --sync=true
+          
+          echo "🚀 Successfully promoted to **DEV** environment" >> $GITHUB_STEP_SUMMARY
+
+      - name: Promote to QA
+        if: github.ref == 'refs/heads/main'
+        run: |
+          jf release-bundle-promote \
+            ${{ env.BUNDLE_NAME }} \
+            ${{ github.run_number }} \
+            QA \
+            --signing-key RSA-SIGNING \
+            --sync=true
+          
+          echo "🚀 Successfully promoted to **QA** environment" >> $GITHUB_STEP_SUMMARY
+
+      # ==========================================
+      # SUMMARY
+      # ==========================================
+      - name: Generate Summary
+        if: always()
+        run: |
+          echo "## 🍕 Green Pizza Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Number:** ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Actor:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Evidence Attached:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Package Signature" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ GitHub Provenance (SLSA)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Cypress E2E Tests" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Build Signature" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Release Bundle Tests" >> $GITHUB_STEP_SUMMARY

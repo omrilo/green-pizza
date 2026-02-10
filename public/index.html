@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🍕 Green Pizza - Order Now!</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            color: white;
+            padding: 40px 20px;
+        }
+        
+        h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .subtitle {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .menu-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            margin-top: 40px;
+        }
+        
+        .pizza-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .pizza-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+        }
+        
+        .pizza-name {
+            font-size: 1.8em;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .pizza-price {
+            font-size: 1.5em;
+            color: #667eea;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        
+        .toppings {
+            color: #666;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+        
+        .order-btn {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: opacity 0.3s ease;
+        }
+        
+        .order-btn:hover {
+            opacity: 0.9;
+        }
+        
+        .health-status {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px 25px;
+            border-radius: 50px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            font-size: 0.9em;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            background: #4caf50;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .modal-content {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            max-width: 500px;
+            width: 90%;
+        }
+        
+        .modal h2 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1em;
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 25px;
+        }
+        
+        .btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            cursor: pointer;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: #ddd;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🍕 Green Pizza</h1>
+            <p class="subtitle">Freshly baked with love & secured with JFrog Evidence</p>
+        </header>
+        
+        <div class="menu-grid" id="menuGrid">
+            <!-- Pizza cards will be inserted here -->
+        </div>
+    </div>
+    
+    <div class="health-status">
+        <span class="status-indicator"></span>
+        <span id="healthText">System Healthy</span>
+    </div>
+    
+    <!-- Order Modal -->
+    <div class="modal" id="orderModal">
+        <div class="modal-content">
+            <h2>Place Your Order</h2>
+            <div class="form-group">
+                <label>Pizza: <span id="modalPizzaName"></span></label>
+            </div>
+            <div class="form-group">
+                <label for="customerName">Your Name:</label>
+                <input type="text" id="customerName" placeholder="Enter your name">
+            </div>
+            <div class="form-group">
+                <label for="quantity">Quantity:</label>
+                <input type="number" id="quantity" min="1" max="10" value="1">
+            </div>
+            <div class="btn-group">
+                <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="submitOrder()">Order Now</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let currentPizza = null;
+        
+        // Check health status
+        async function checkHealth() {
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                document.getElementById('healthText').textContent = 'System Healthy';
+            } catch (error) {
+                document.getElementById('healthText').textContent = 'System Offline';
+            }
+        }
+        
+        // Load menu
+        async function loadMenu() {
+            try {
+                const response = await fetch('/api/menu');
+                const data = await response.json();
+                const menuGrid = document.getElementById('menuGrid');
+                
+                data.pizzas.forEach(pizza => {
+                    const card = document.createElement('div');
+                    card.className = 'pizza-card';
+                    card.innerHTML = `
+                        <div class="pizza-name">${pizza.name}</div>
+                        <div class="pizza-price">$${pizza.price}</div>
+                        <div class="toppings">🍕 ${pizza.toppings.join(', ')}</div>
+                        <button class="order-btn" onclick="openOrderModal(${pizza.id}, '${pizza.name}')">
+                            Order Now
+                        </button>
+                    `;
+                    menuGrid.appendChild(card);
+                });
+            } catch (error) {
+                console.error('Failed to load menu:', error);
+            }
+        }
+        
+        function openOrderModal(pizzaId, pizzaName) {
+            currentPizza = pizzaId;
+            document.getElementById('modalPizzaName').textContent = pizzaName;
+            document.getElementById('orderModal').style.display = 'flex';
+        }
+        
+        function closeModal() {
+            document.getElementById('orderModal').style.display = 'none';
+            document.getElementById('customerName').value = '';
+            document.getElementById('quantity').value = '1';
+        }
+        
+        async function submitOrder() {
+            const customerName = document.getElementById('customerName').value;
+            const quantity = document.getElementById('quantity').value;
+            
+            if (!customerName) {
+                alert('Please enter your name');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        pizzaId: currentPizza,
+                        quantity: parseInt(quantity),
+                        customerName
+                    })
+                });
+                
+                const order = await response.json();
+                alert(`Order confirmed! 🎉\nOrder ID: ${order.orderId}\nTotal: $${order.totalPrice.toFixed(2)}`);
+                closeModal();
+            } catch (error) {
+                alert('Order failed. Please try again.');
+            }
+        }
+        
+        // Initialize
+        checkHealth();
+        loadMenu();
+        setInterval(checkHealth, 30000); // Check health every 30 seconds
+    </script>
+</body>
+</html>

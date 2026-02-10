@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+# package-lock.json should be committed for reproducible builds
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Cypress
+cypress/videos/
+cypress/screenshots/
+cypress/reports/
+cypress-results.json
+cypress-summary.json
+
+# Build artifacts
+dist/
+build/
+*.log
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# JFrog
+*.json.evd
+metadata.json
+bundle-spec.json
+*-sign.json
+*-evidence.json
+
+# Jira evidence
+scripts/jira-evidence/jira-results.json
+scripts/jira-evidence/jira-results.md
+scripts/jira-evidence/main
+
+# Test results
+test-results/
+junit.xml
