@@ -1,0 +1,44 @@
+name: Build with OIDC
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write  # Required for OIDC
+  contents: read
+
+env:
+  IMAGE_NAME: green-pizza
+  DOCKER_REPO: demo2-green-pizza-docker-dev
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup JFrog CLI with OIDC
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: https://${{ vars.ARTIFACTORY_URL }}
+        with:
+          oidc-provider-name: github-oidc  # Must match name in JFrog config
+          oidc-audience: jfrog-github      # Must match audience in JFrog config
+
+      - name: Docker Login via JFrog CLI
+        run: |
+          # JFrog CLI can configure Docker auth using OIDC token
+          jf docker login ${{ vars.ARTIFACTORY_URL }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and Push Docker Image
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --push \
+            --tag ${{ vars.ARTIFACTORY_URL }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ github.run_number }} \
+            .
