@@ -1,0 +1,115 @@
+name: Evidence - Build Sonar
+
+on:
+  workflow_call:
+    inputs:
+      build_name:
+        required: true
+        type: string
+      build_number:
+        required: true
+        type: string
+    secrets:
+      private_key:
+        required: true
+      artifactory_url:
+        required: true
+      sonar_token:
+        required: false
+
+  workflow_dispatch:
+    inputs:
+      build_name:
+        description: 'Build name'
+        required: true
+        default: 'green-pizza-build'
+      build_number:
+        description: 'Build number'
+        required: true
+
+jobs:
+  attach-sonar:
+    runs-on: ubuntu-latest
+    # Only run if Sonar is configured
+    if: vars.SONAR_URL != ''
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Tests with Coverage
+        run: npm test -- --coverage
+        continue-on-error: true
+
+      - name: Run SonarQube Scan
+        env:
+          SONAR_TOKEN: ${{ secrets.sonar_token || secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_URL }}
+        run: |
+          # Install SonarScanner
+          npm install -g sonarqube-scanner
+          
+          # Run Sonar scan
+          sonar-scanner \
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY || 'green-pizza' }} \
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION || '' }} \
+            -Dsonar.sources=src \
+            -Dsonar.tests=tests \
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
+            -Dsonar.host.url=${{ vars.SONAR_URL }} \
+            -Dsonar.login=${{ secrets.sonar_token || secrets.SONAR_TOKEN }}
+          
+          echo "✅ Sonar scan completed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Wait for Quality Gate
+        run: |
+          echo "Waiting for quality gate result..."
+          sleep 10
+          
+          # Get quality gate status
+          QG_STATUS=$(curl -s -u ${{ secrets.sonar_token || secrets.SONAR_TOKEN }}: \
+            "${{ vars.SONAR_URL }}/api/qualitygates/project_status?projectKey=${{ vars.SONAR_PROJECT_KEY || 'green-pizza' }}" \
+            | jq -r '.projectStatus.status // "UNKNOWN"')
+          
+          echo "### Sonar Quality Gate" >> $GITHUB_STEP_SUMMARY
+          echo "- Status: $QG_STATUS" >> $GITHUB_STEP_SUMMARY
+          echo "- Project: ${{ vars.SONAR_PROJECT_KEY || 'green-pizza' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- URL: ${{ vars.SONAR_URL }}/dashboard?id=${{ vars.SONAR_PROJECT_KEY || 'green-pizza' }}" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "$QG_STATUS" = "ERROR" ]; then
+            echo "❌ Quality Gate failed"
+            exit 1
+          else
+            echo "✅ Quality Gate passed"
+          fi
+
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ secrets.artifactory_url || vars.ARTIFACTORY_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}
+
+      - name: Attach Sonar Evidence to Build
+        env:
+          SONAR_TOKEN: ${{ secrets.sonar_token || secrets.SONAR_TOKEN }}
+        run: |
+          # Use JFrog native Sonar integration
+          jf evd create \
+            --build-name ${{ inputs.build_name }} \
+            --build-number ${{ inputs.build_number }} \
+            --integration sonar \
+            --key "${{ secrets.private_key || secrets.PRIVATE_KEY }}" \
+            --key-alias SIGNING-KEY
+          
+          echo "✅ **Sonar Evidence Attached to Build**" >> $GITHUB_STEP_SUMMARY
+          echo "- Build: ${{ inputs.build_name }} #${{ inputs.build_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Integration: sonar" >> $GITHUB_STEP_SUMMARY

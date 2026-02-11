@@ -1,0 +1,151 @@
+name: Evidence - Package JUnit Tests
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        required: true
+        type: string
+      build_number:
+        required: true
+        type: string
+      docker_repo:
+        required: true
+        type: string
+    secrets:
+      private_key:
+        required: true
+      artifactory_url:
+        required: true
+
+  workflow_dispatch:
+    inputs:
+      image_name:
+        description: 'Docker image name'
+        required: true
+        default: 'green-pizza'
+      build_number:
+        description: 'Build number / version'
+        required: true
+      docker_repo:
+        description: 'Docker repository'
+        required: true
+        default: 'green-pizza-docker-dev'
+
+jobs:
+  attach-junit:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Unit Tests with Coverage
+        run: |
+          npm test -- --ci --coverage --json --outputFile=test-results.json
+        continue-on-error: true
+
+      - name: Generate JUnit Evidence JSON
+        if: always()
+        run: |
+          # Parse test results
+          TOTAL=$(cat test-results.json | jq '.numTotalTests // 0')
+          PASSED=$(cat test-results.json | jq '.numPassedTests // 0')
+          FAILED=$(cat test-results.json | jq '.numFailedTests // 0')
+          
+          # Get coverage if available
+          if [ -f coverage/coverage-summary.json ]; then
+            LINES_PCT=$(cat coverage/coverage-summary.json | jq '.total.lines.pct // 0')
+            STATEMENTS_PCT=$(cat coverage/coverage-summary.json | jq '.total.statements.pct // 0')
+            FUNCTIONS_PCT=$(cat coverage/coverage-summary.json | jq '.total.functions.pct // 0')
+            BRANCHES_PCT=$(cat coverage/coverage-summary.json | jq '.total.branches.pct // 0')
+          else
+            LINES_PCT=0
+            STATEMENTS_PCT=0
+            FUNCTIONS_PCT=0
+            BRANCHES_PCT=0
+          fi
+          
+          # Create evidence document
+          cat > junit-evidence.json <<EOF
+          {
+            "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "testFramework": "jest",
+            "version": "29.7.0",
+            "environment": "github-actions",
+            "summary": {
+              "totalTests": $TOTAL,
+              "passed": $PASSED,
+              "failed": $FAILED,
+              "skipped": 0,
+              "duration": $(cat test-results.json | jq '.testResults[].perfStats.runtime' | jq -s 'add // 0')
+            },
+            "coverage": {
+              "lines": $LINES_PCT,
+              "statements": $STATEMENTS_PCT,
+              "functions": $FUNCTIONS_PCT,
+              "branches": $BRANCHES_PCT
+            },
+            "results": $(cat test-results.json | jq '.testResults')
+          }
+          EOF
+          
+          cat junit-evidence.json | jq '.'
+          
+          echo "### JUnit Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "- Total Tests: $TOTAL" >> $GITHUB_STEP_SUMMARY
+          echo "- Passed: $PASSED ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- Failed: $FAILED" >> $GITHUB_STEP_SUMMARY
+          echo "- Coverage: ${LINES_PCT}%" >> $GITHUB_STEP_SUMMARY
+
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ secrets.artifactory_url || vars.ARTIFACTORY_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}
+
+      - name: Attach JUnit Evidence to Package
+        if: always()
+        run: |
+          jf evd create \
+            --package-name ${{ inputs.image_name }} \
+            --package-version ${{ inputs.build_number }} \
+            --package-repo-name ${{ inputs.docker_repo }} \
+            --key "${{ secrets.private_key || secrets.PRIVATE_KEY }}" \
+            --key-alias SIGNING-KEY \
+            --predicate ./junit-evidence.json \
+            --predicate-type https://junit.org/test-results/v1 \
+            --provider-id "jest"
+          
+          echo "✅ **JUnit Evidence Attached**" >> $GITHUB_STEP_SUMMARY
+          echo "- Package: ${{ inputs.docker_repo }}/${{ inputs.image_name }}:${{ inputs.build_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Predicate Type: https://junit.org/test-results/v1" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Evidence Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-evidence
+          path: |
+            junit-evidence.json
+            test-results.json
+            coverage/
+          retention-days: 30
+
+      - name: Fail if Tests Failed
+        if: always()
+        run: |
+          FAILED=$(cat junit-evidence.json | jq '.summary.failed')
+          if [ "$FAILED" -gt 0 ]; then
+            echo "❌ Tests failed. Exiting with error."
+            exit 1
+          fi

@@ -1,0 +1,123 @@
+name: Evidence - Package Provenance (SLSA)
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        required: true
+        type: string
+      build_number:
+        required: true
+        type: string
+      docker_repo:
+        required: true
+        type: string
+      docker_digest:
+        required: true
+        type: string
+    secrets:
+      private_key:
+        required: true
+      artifactory_url:
+        required: true
+
+  workflow_dispatch:
+    inputs:
+      image_name:
+        description: 'Docker image name'
+        required: true
+        default: 'green-pizza'
+      build_number:
+        description: 'Build number / version'
+        required: true
+      docker_repo:
+        description: 'Docker repository'
+        required: true
+        default: 'green-pizza-docker-dev'
+
+jobs:
+  attach-provenance:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ secrets.artifactory_url || vars.ARTIFACTORY_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}
+
+      - name: Generate GitHub Provenance (SLSA v1)
+        run: |
+          echo "Generating SLSA provenance for ${{ inputs.image_name }}:${{ inputs.build_number }}"
+          
+          cat > github-provenance.json <<'EOF'
+          {
+            "buildType": "https://github.com/actions/workflow",
+            "builder": {
+              "id": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            },
+            "invocation": {
+              "configSource": {
+                "uri": "git+https://github.com/${{ github.repository }}@${{ github.ref }}",
+                "digest": {
+                  "sha1": "${{ github.sha }}"
+                },
+                "entryPoint": ".github/workflows/evidence/package-provenance.yml"
+              }
+            },
+            "metadata": {
+              "buildInvocationId": "${{ github.run_id }}-${{ github.run_attempt }}",
+              "buildStartedOn": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+              "completeness": {
+                "parameters": true,
+                "environment": true,
+                "materials": true
+              }
+            },
+            "materials": [
+              {
+                "uri": "git+https://github.com/${{ github.repository }}@${{ github.ref }}",
+                "digest": {
+                  "sha1": "${{ github.sha }}"
+                }
+              },
+              {
+                "uri": "pkg:docker/${{ inputs.image_name }}@${{ inputs.build_number }}",
+                "digest": {
+                  "sha256": "${{ inputs.docker_digest }}"
+                }
+              }
+            ]
+          }
+          EOF
+          
+          cat github-provenance.json | jq '.'
+
+      - name: Attach Provenance Evidence to Package
+        run: |
+          jf evd create \
+            --package-name ${{ inputs.image_name }} \
+            --package-version ${{ inputs.build_number }} \
+            --package-repo-name ${{ inputs.docker_repo }} \
+            --key "${{ secrets.private_key || secrets.PRIVATE_KEY }}" \
+            --key-alias SIGNING-KEY \
+            --predicate ./github-provenance.json \
+            --predicate-type https://slsa.dev/provenance/v1 \
+            --provider-id "github-actions"
+          
+          echo "✅ **Provenance Evidence Attached**" >> $GITHUB_STEP_SUMMARY
+          echo "- Package: ${{ inputs.docker_repo }}/${{ inputs.image_name }}:${{ inputs.build_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Predicate Type: https://slsa.dev/provenance/v1" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Evidence Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: provenance-evidence
+          path: github-provenance.json
+          retention-days: 30

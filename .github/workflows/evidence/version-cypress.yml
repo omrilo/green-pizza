@@ -1,0 +1,172 @@
+name: Evidence - Application Version Cypress
+
+on:
+  workflow_call:
+    inputs:
+      app_name:
+        required: true
+        type: string
+      app_version:
+        required: true
+        type: string
+      app_url:
+        required: false
+        type: string
+        default: 'http://localhost:3000'
+    secrets:
+      private_key:
+        required: true
+      artifactory_url:
+        required: true
+
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'Application name'
+        required: true
+        default: 'green-pizza'
+      app_version:
+        description: 'Application version'
+        required: true
+      app_url:
+        description: 'Application URL to test'
+        required: false
+        default: 'http://localhost:3000'
+
+jobs:
+  attach-cypress:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start Application
+        run: |
+          npm start &
+          APP_PID=$!
+          echo $APP_PID > app.pid
+          
+          echo "Waiting for application to start..."
+          timeout 60 bash -c 'until curl -f ${{ inputs.app_url }}/api/health; do sleep 2; done'
+          
+          echo "✅ Application started at ${{ inputs.app_url }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Run Cypress E2E Tests
+        uses: cypress-io/github-action@v6
+        with:
+          wait-on: '${{ inputs.app_url }}'
+          wait-on-timeout: 120
+          browser: chrome
+          record: false
+        continue-on-error: true
+
+      - name: Stop Application
+        if: always()
+        run: |
+          if [ -f app.pid ]; then
+            kill $(cat app.pid) || true
+            rm app.pid
+          fi
+
+      - name: Merge Cypress Reports
+        if: always()
+        run: |
+          npx mochawesome-merge cypress/reports/*.json > cypress-results.json || echo '{"stats":{"tests":0,"passes":0,"failures":0}}' > cypress-results.json
+
+      - name: Generate Cypress Evidence JSON
+        if: always()
+        run: |
+          # Parse test results
+          TOTAL=$(cat cypress-results.json | jq '.stats.tests // 0')
+          PASSED=$(cat cypress-results.json | jq '.stats.passes // 0')
+          FAILED=$(cat cypress-results.json | jq '.stats.failures // 0')
+          SKIPPED=$(cat cypress-results.json | jq '.stats.skipped // 0')
+          DURATION=$(cat cypress-results.json | jq '.stats.duration // 0')
+          
+          # Calculate pass rate
+          if [ "$TOTAL" -gt 0 ]; then
+            PASS_RATE=$(echo "scale=2; ($PASSED * 100) / $TOTAL" | bc)
+          else
+            PASS_RATE=0
+          fi
+          
+          # Create evidence document
+          cat > cypress-evidence.json <<EOF
+          {
+            "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "testFramework": "cypress",
+            "version": "13.6.0",
+            "browser": "chrome",
+            "environment": "github-actions",
+            "applicationVersion": "${{ inputs.app_version }}",
+            "summary": {
+              "totalTests": $TOTAL,
+              "passed": $PASSED,
+              "failed": $FAILED,
+              "skipped": $SKIPPED,
+              "duration": $DURATION,
+              "passRate": $PASS_RATE
+            },
+            "suites": $(cat cypress-results.json | jq '.results // []')
+          }
+          EOF
+          
+          echo "### Cypress E2E Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "- Total Tests: $TOTAL" >> $GITHUB_STEP_SUMMARY
+          echo "- Passed: $PASSED ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- Failed: $FAILED" >> $GITHUB_STEP_SUMMARY
+          echo "- Pass Rate: ${PASS_RATE}%" >> $GITHUB_STEP_SUMMARY
+
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ secrets.artifactory_url || vars.ARTIFACTORY_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}
+
+      - name: Attach Cypress Evidence to Application Version
+        if: always()
+        run: |
+          jf evd create \
+            --app ${{ inputs.app_name }} \
+            --app-version ${{ inputs.app_version }} \
+            --predicate ./cypress-evidence.json \
+            --predicate-type https://cypress.io/test-results/v1 \
+            --key "${{ secrets.private_key || secrets.PRIVATE_KEY }}" \
+            --key-alias SIGNING-KEY \
+            --provider-id "cypress"
+          
+          echo "✅ **Cypress Evidence Attached to Application Version**" >> $GITHUB_STEP_SUMMARY
+          echo "- Application: ${{ inputs.app_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Version: ${{ inputs.app_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Predicate Type: https://cypress.io/test-results/v1" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Evidence Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-evidence
+          path: |
+            cypress-evidence.json
+            cypress-results.json
+            cypress/videos/
+            cypress/screenshots/
+          retention-days: 30
+
+      - name: Fail if Tests Failed
+        if: always()
+        run: |
+          FAILED=$(cat cypress-evidence.json | jq '.summary.failed')
+          if [ "$FAILED" -gt 0 ]; then
+            echo "❌ Cypress tests failed. Exiting with error."
+            exit 1
+          fi

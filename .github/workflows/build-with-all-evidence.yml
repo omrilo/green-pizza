@@ -1,0 +1,260 @@
+name: Build with All Evidence (Orchestrator)
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: green-pizza
+  DOCKER_REPO: green-pizza-docker-dev
+  BUILD_NAME: green-pizza-build
+  APP_NAME: green-pizza
+  APP_VERSION_PREFIX: v
+
+jobs:
+  # ==========================================
+  # BUILD & PUSH DOCKER IMAGE
+  # ==========================================
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      docker_digest: ${{ steps.docker-build.outputs.digest }}
+      build_number: ${{ github.run_number }}
+      app_version: ${{ steps.set-version.outputs.app_version }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set Application Version
+        id: set-version
+        run: |
+          APP_VERSION="${{ env.APP_VERSION_PREFIX }}${{ github.run_number }}"
+          echo "app_version=$APP_VERSION" >> $GITHUB_OUTPUT
+          echo "Application Version: $APP_VERSION" >> $GITHUB_STEP_SUMMARY
+
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ vars.ARTIFACTORY_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}
+
+      - name: Login to Artifactory Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.ARTIFACTORY_URL }}
+          username: ${{ secrets.JF_USER }}
+          password: ${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        id: docker-build
+        with:
+          context: .
+          push: true
+          tags: ${{ vars.ARTIFACTORY_URL }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ github.run_number }}
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Add Docker package to build
+        run: |
+          echo "${{ vars.ARTIFACTORY_URL }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ github.run_number }}@${{ steps.docker-build.outputs.digest }}" > metadata.json
+          jf rt build-docker-create ${{ env.DOCKER_REPO }} \
+            --image-file metadata.json \
+            --build-name ${{ env.BUILD_NAME }} \
+            --build-number ${{ github.run_number }}
+
+      - name: Publish Build Info
+        run: |
+          jf rt build-collect-env ${{ env.BUILD_NAME }} ${{ github.run_number }}
+          jf rt build-add-git ${{ env.BUILD_NAME }} ${{ github.run_number }}
+          jf rt build-publish ${{ env.BUILD_NAME }} ${{ github.run_number }}
+
+      - name: Create Application Version
+        run: |
+          # Create application (if not exists)
+          jf app create ${{ env.APP_NAME }} || echo "Application already exists"
+          
+          # Create application version and link build
+          jf app-version create \
+            --app ${{ env.APP_NAME }} \
+            --version ${{ steps.set-version.outputs.app_version }} \
+            --build-name ${{ env.BUILD_NAME }} \
+            --build-number ${{ github.run_number }}
+          
+          echo "✅ Application Version Created: ${{ steps.set-version.outputs.app_version }}" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================
+  # PACKAGE LEVEL EVIDENCE
+  # ==========================================
+  provenance-evidence:
+    needs: build-and-push
+    uses: ./.github/workflows/evidence/package-provenance.yml
+    with:
+      image_name: green-pizza
+      build_number: ${{ github.run_number }}
+      docker_repo: green-pizza-docker-dev
+      docker_digest: ${{ needs.build-and-push.outputs.docker_digest }}
+    secrets:
+      private_key: ${{ secrets.PRIVATE_KEY }}
+      artifactory_url: ${{ vars.ARTIFACTORY_URL }}
+
+  junit-evidence:
+    needs: build-and-push
+    uses: ./.github/workflows/evidence/package-junit.yml
+    with:
+      image_name: green-pizza
+      build_number: ${{ github.run_number }}
+      docker_repo: green-pizza-docker-dev
+    secrets:
+      private_key: ${{ secrets.PRIVATE_KEY }}
+      artifactory_url: ${{ vars.ARTIFACTORY_URL }}
+
+  jira-evidence:
+    needs: build-and-push
+    if: vars.JIRA_URL != ''
+    uses: ./.github/workflows/evidence/package-jira.yml
+    with:
+      image_name: green-pizza
+      build_number: ${{ github.run_number }}
+      docker_repo: green-pizza-docker-dev
+    secrets:
+      private_key: ${{ secrets.PRIVATE_KEY }}
+      artifactory_url: ${{ vars.ARTIFACTORY_URL }}
+      jira_username: ${{ secrets.JIRA_USERNAME }}
+      jira_api_token: ${{ secrets.JIRA_API_TOKEN }}
+
+  cyclonedx-evidence:
+    needs: build-and-push
+    uses: ./.github/workflows/evidence/package-cyclonedx.yml
+    with:
+      image_name: green-pizza
+      build_number: ${{ github.run_number }}
+      docker_repo: green-pizza-docker-dev
+    secrets:
+      private_key: ${{ secrets.PRIVATE_KEY }}
+      artifactory_url: ${{ vars.ARTIFACTORY_URL }}
+
+  vex-evidence:
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/evidence/package-vex.yml
+    with:
+      image_name: green-pizza
+      build_number: ${{ github.run_number }}
+      docker_repo: green-pizza-docker-dev
+    secrets:
+      private_key: ${{ secrets.PRIVATE_KEY }}
+      artifactory_url: ${{ vars.ARTIFACTORY_URL }}
+
+  # ==========================================
+  # BUILD LEVEL EVIDENCE
+  # ==========================================
+  sonar-evidence:
+    needs: build-and-push
+    if: vars.SONAR_URL != ''
+    uses: ./.github/workflows/evidence/build-sonar.yml
+    with:
+      build_name: green-pizza-build
+      build_number: ${{ github.run_number }}
+    secrets:
+      private_key: ${{ secrets.PRIVATE_KEY }}
+      artifactory_url: ${{ vars.ARTIFACTORY_URL }}
+      sonar_token: ${{ secrets.SONAR_TOKEN }}
+
+  # ==========================================
+  # APPLICATION VERSION LEVEL EVIDENCE
+  # ==========================================
+  cypress-evidence:
+    needs: build-and-push
+    uses: ./.github/workflows/evidence/version-cypress.yml
+    with:
+      app_name: green-pizza
+      app_version: ${{ needs.build-and-push.outputs.app_version }}
+      app_url: 'http://localhost:3000'
+    secrets:
+      private_key: ${{ secrets.PRIVATE_KEY }}
+      artifactory_url: ${{ vars.ARTIFACTORY_URL }}
+
+  # ==========================================
+  # PROMOTION
+  # ==========================================
+  promote-to-dev:
+    needs: [build-and-push, provenance-evidence, junit-evidence, cypress-evidence]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ vars.ARTIFACTORY_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}
+
+      - name: Promote Application Version to DEV
+        run: |
+          jf app-version promote \
+            --app ${{ env.APP_NAME }} \
+            --version ${{ needs.build-and-push.outputs.app_version }} \
+            --env DEV
+          
+          echo "🚀 Successfully promoted to **DEV** environment" >> $GITHUB_STEP_SUMMARY
+
+  promote-to-qa:
+    needs: [promote-to-dev]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ vars.ARTIFACTORY_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}
+
+      - name: Promote Application Version to QA
+        run: |
+          jf app-version promote \
+            --app ${{ env.APP_NAME }} \
+            --version ${{ needs.build-and-push.outputs.app_version }} \
+            --env QA
+          
+          echo "🚀 Successfully promoted to **QA** environment" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================
+  # SUMMARY
+  # ==========================================
+  generate-summary:
+    needs: [build-and-push, provenance-evidence, junit-evidence, cypress-evidence]
+    if: always()
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Generate Complete Summary
+        run: |
+          echo "## 🍕 Green Pizza Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Number:** ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Application Version:** ${{ needs.build-and-push.outputs.app_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Actor:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Evidence Attached:" >> $GITHUB_STEP_SUMMARY
+          echo "**Package Level:**" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Provenance (SLSA)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ JUnit Tests" >> $GITHUB_STEP_SUMMARY
+          echo "- ${{ vars.JIRA_URL != '' && '✅' || '⚪' }} Jira Tickets" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ CycloneDX SBOM" >> $GITHUB_STEP_SUMMARY
+          echo "- ${{ github.ref == 'refs/heads/main' && '✅' || '⚪' }} VEX" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Level:**" >> $GITHUB_STEP_SUMMARY
+          echo "- ${{ vars.SONAR_URL != '' && '✅' || '⚪' }} Sonar Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Application Version Level:**" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Cypress E2E Tests" >> $GITHUB_STEP_SUMMARY

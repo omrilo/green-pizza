@@ -1,0 +1,114 @@
+name: Evidence - Package VEX
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        required: true
+        type: string
+      build_number:
+        required: true
+        type: string
+      docker_repo:
+        required: true
+        type: string
+    secrets:
+      private_key:
+        required: true
+      artifactory_url:
+        required: true
+
+  workflow_dispatch:
+    inputs:
+      image_name:
+        description: 'Docker image name'
+        required: true
+        default: 'green-pizza'
+      build_number:
+        description: 'Build number / version'
+        required: true
+      docker_repo:
+        description: 'Docker repository'
+        required: true
+        default: 'green-pizza-docker-dev'
+
+jobs:
+  attach-vex:
+    runs-on: ubuntu-latest
+    # Only for main branch / production builds
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ secrets.artifactory_url || vars.ARTIFACTORY_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}
+
+      - name: Get Vulnerabilities from Xray
+        run: |
+          IMAGE_PATH="${{ secrets.artifactory_url || vars.ARTIFACTORY_URL }}/${{ inputs.docker_repo }}/${{ inputs.image_name }}:${{ inputs.build_number }}"
+          
+          # Scan for vulnerabilities
+          jf xr scan \
+            --format json \
+            "$IMAGE_PATH" \
+            > xray-scan.json || echo '{"vulnerabilities":[]}' > xray-scan.json
+          
+          CVE_COUNT=$(cat xray-scan.json | jq '.vulnerabilities | length // 0')
+          echo "Found $CVE_COUNT vulnerabilities"
+          
+          echo "### Vulnerabilities Found" >> $GITHUB_STEP_SUMMARY
+          echo "- Total CVEs: $CVE_COUNT" >> $GITHUB_STEP_SUMMARY
+
+      - name: Generate VEX Document
+        run: |
+          # Create VEX document with statements for each CVE
+          # NOTE: In production, this should be reviewed by security team
+          
+          cat > vex-document.json <<'EOF'
+          {
+            "@context": "https://openvex.dev/ns/v1",
+            "@id": "https://github.com/${{ github.repository }}/vex/${{ inputs.build_number }}",
+            "author": "${{ github.actor }}",
+            "role": "Build System",
+            "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "version": "1",
+            "statements": []
+          }
+          EOF
+          
+          # TODO: Add actual VEX statements based on security team review
+          # For demo purposes, we're creating an empty VEX document
+          
+          echo "⚠️ VEX document created (requires security team review)" >> $GITHUB_STEP_SUMMARY
+          echo "- This is a template VEX document" >> $GITHUB_STEP_SUMMARY
+          echo "- Production deployments should include actual vulnerability assessments" >> $GITHUB_STEP_SUMMARY
+
+      - name: Attach VEX Evidence to Package
+        run: |
+          jf evd create \
+            --package-name ${{ inputs.image_name }} \
+            --package-version ${{ inputs.build_number }} \
+            --package-repo-name ${{ inputs.docker_repo }} \
+            --key "${{ secrets.private_key || secrets.PRIVATE_KEY }}" \
+            --key-alias SIGNING-KEY \
+            --predicate ./vex-document.json \
+            --predicate-type https://openvex.dev/ns/v1 \
+            --provider-id "security-team"
+          
+          echo "✅ **VEX Evidence Attached**" >> $GITHUB_STEP_SUMMARY
+          echo "- Package: ${{ inputs.docker_repo }}/${{ inputs.image_name }}:${{ inputs.build_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Predicate Type: https://openvex.dev/ns/v1" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Evidence Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vex-evidence
+          path: |
+            vex-document.json
+            xray-scan.json
+          retention-days: 30

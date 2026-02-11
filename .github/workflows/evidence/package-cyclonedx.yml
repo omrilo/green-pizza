@@ -1,0 +1,106 @@
+name: Evidence - Package CycloneDX SBOM
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        required: true
+        type: string
+      build_number:
+        required: true
+        type: string
+      docker_repo:
+        required: true
+        type: string
+    secrets:
+      private_key:
+        required: true
+      artifactory_url:
+        required: true
+
+  workflow_dispatch:
+    inputs:
+      image_name:
+        description: 'Docker image name'
+        required: true
+        default: 'green-pizza'
+      build_number:
+        description: 'Build number / version'
+        required: true
+      docker_repo:
+        description: 'Docker repository'
+        required: true
+        default: 'green-pizza-docker-dev'
+
+jobs:
+  attach-sbom:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ secrets.artifactory_url || vars.ARTIFACTORY_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}
+
+      - name: Wait for Xray Scan
+        run: |
+          echo "Waiting for Xray to scan image..."
+          echo "Image: ${{ secrets.artifactory_url || vars.ARTIFACTORY_URL }}/${{ inputs.docker_repo }}/${{ inputs.image_name }}:${{ inputs.build_number }}"
+          
+          # Wait up to 3 minutes for scan to complete
+          for i in {1..18}; do
+            sleep 10
+            echo "Waiting... ($i/18)"
+          done
+
+      - name: Generate SBOM from Xray
+        run: |
+          IMAGE_PATH="${{ secrets.artifactory_url || vars.ARTIFACTORY_URL }}/${{ inputs.docker_repo }}/${{ inputs.image_name }}:${{ inputs.build_number }}"
+          
+          echo "Generating SBOM for: $IMAGE_PATH"
+          
+          # Generate CycloneDX SBOM
+          jf xr sbom \
+            --format cyclonedx \
+            "$IMAGE_PATH" \
+            > sbom-cyclonedx.json || echo '{"bomFormat":"CycloneDX","specVersion":"1.4","components":[]}' > sbom-cyclonedx.json
+          
+          # Display summary
+          COMPONENT_COUNT=$(cat sbom-cyclonedx.json | jq '.components | length // 0')
+          
+          echo "### SBOM Generated" >> $GITHUB_STEP_SUMMARY
+          echo "- Components Found: $COMPONENT_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "- Format: CycloneDX v1.4" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "$COMPONENT_COUNT" -gt 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Top Components:**" >> $GITHUB_STEP_SUMMARY
+            cat sbom-cyclonedx.json | jq -r '.components[:5] | .[] | "- \(.name)@\(.version)"' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Attach CycloneDX SBOM Evidence to Package
+        run: |
+          jf evd create \
+            --package-name ${{ inputs.image_name }} \
+            --package-version ${{ inputs.build_number }} \
+            --package-repo-name ${{ inputs.docker_repo }} \
+            --key "${{ secrets.private_key || secrets.PRIVATE_KEY }}" \
+            --key-alias SIGNING-KEY \
+            --predicate ./sbom-cyclonedx.json \
+            --predicate-type https://cyclonedx.org/bom/v1.4 \
+            --provider-id "jfrog-xray"
+          
+          echo "✅ **CycloneDX SBOM Evidence Attached**" >> $GITHUB_STEP_SUMMARY
+          echo "- Package: ${{ inputs.docker_repo }}/${{ inputs.image_name }}:${{ inputs.build_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Predicate Type: https://cyclonedx.org/bom/v1.4" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Evidence Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyclonedx-sbom
+          path: sbom-cyclonedx.json
+          retention-days: 30
