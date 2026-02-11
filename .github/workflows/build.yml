@@ -96,7 +96,7 @@ jobs:
   # ==========================================
   provenance-evidence:
     needs: build-and-push
-    uses: ./.github/workflows/evidence/package-provenance.yml
+    uses: ./.github/workflows/package-provenance.yml
     with:
       image_name: green-pizza
       build_number: ${{ github.run_number }}
@@ -108,7 +108,7 @@ jobs:
 
   junit-evidence:
     needs: build-and-push
-    uses: ./.github/workflows/evidence/package-junit.yml
+    uses: ./.github/workflows/package-junit.yml
     with:
       image_name: green-pizza
       build_number: ${{ github.run_number }}
@@ -120,7 +120,7 @@ jobs:
   jira-evidence:
     needs: build-and-push
     if: vars.JIRA_URL != ''
-    uses: ./.github/workflows/evidence/package-jira.yml
+    uses: ./.github/workflows/package-jira.yml
     with:
       image_name: green-pizza
       build_number: ${{ github.run_number }}
@@ -133,7 +133,7 @@ jobs:
 
   cyclonedx-evidence:
     needs: build-and-push
-    uses: ./.github/workflows/evidence/package-cyclonedx.yml
+    uses: ./.github/workflows/package-cyclonedx.yml
     with:
       image_name: green-pizza
       build_number: ${{ github.run_number }}
@@ -145,7 +145,7 @@ jobs:
   vex-evidence:
     needs: build-and-push
     if: github.ref == 'refs/heads/main'
-    uses: ./.github/workflows/evidence/package-vex.yml
+    uses: ./.github/workflows/package-vex.yml
     with:
       image_name: green-pizza
       build_number: ${{ github.run_number }}
@@ -160,7 +160,7 @@ jobs:
   sonar-evidence:
     needs: build-and-push
     if: vars.SONAR_URL != ''
-    uses: ./.github/workflows/evidence/build-sonar.yml
+    uses: ./.github/workflows/build-sonar.yml
     with:
       build_name: green-pizza-build
       build_number: ${{ github.run_number }}
@@ -174,7 +174,7 @@ jobs:
   # ==========================================
   cypress-evidence:
     needs: build-and-push
-    uses: ./.github/workflows/evidence/version-cypress.yml
+    uses: ./.github/workflows/version-cypress.yml
     with:
       app_name: green-pizza
       app_version: ${{ needs.build-and-push.outputs.app_version }}
