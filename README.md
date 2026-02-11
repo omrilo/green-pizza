@@ -18,8 +18,8 @@ A complete example application demonstrating JFrog Platform Evidence Management 
 **Green Pizza** is a fully functional pizza ordering application that demonstrates how to:
 
 - Build and publish Docker images to JFrog Artifactory
-- Attach multiple types of signed evidence to packages
-- Create and promote Release Bundles through environments
+- Attach multiple types of signed evidence to packages, builds, and application versions
+- Create and promote Application Versions through environments  
 - Implement automated quality gates with evidence-based policies
 
 This repository serves as a **template** that you can use as your own project.
@@ -40,7 +40,7 @@ This repository serves as a **template** that you can use as your own project.
 - 📊 **SonarQube** (optional) - Code quality analysis
 - 🎫 **Jira Tickets** (optional) - Issue tracking integration
 - 📦 **Build Signature** - Signed build information
-- 🚀 **Release Bundle Evidence** - Integration test results
+- 📱 **Application Version Evidence** - Integration test results and deployment info
 
 ## 🚀 Quick Start
 
@@ -138,10 +138,10 @@ Signed build information with:
 - Run ID and timestamp
 - Git commit information
 
-### 7. Release Bundle Evidence
-**Predicate Type:** `https://jfrog.com/evidence/testing-results/v1`
+### 7. Application Version Evidence
+**Predicate Type:** `https://jfrog.com/evidence/testing-results/v1` & `https://jfrog.com/evidence/deployment/v1`
 
-Integration test results for the release bundle.
+Integration test results and deployment information attached to the Application Version, providing a complete view of the release.
 
 ## ⚙️ Configuration
 
@@ -174,7 +174,6 @@ Navigate to **Settings → Secrets and variables → Actions → Variables** and
 
 1. **Create Repositories:**
    - Docker repository: `green-pizza-docker-dev`
-   - Release Bundle repository: `release-bundles-v2`
 
 2. **Create Signing Key:**
    - Go to **Admin → Security → Keys Management**
@@ -202,8 +201,8 @@ graph TD
     G --> H[Optional: Sonar & Jira]
     H --> I[Publish Build Info]
     I --> J[Attach Build Evidence]
-    J --> K[Create Release Bundle]
-    K --> L[Attach Bundle Evidence]
+    J --> K[Create Application Version]
+    K --> L[Attach App Version Evidence]
     L --> M[Promote to DEV/QA]
 ```
 
