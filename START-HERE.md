@@ -1,286 +1,400 @@
-# 🚀 START HERE - Green Pizza Evidence Management
+# 🚀 Green Pizza - Start Here
 
-**Congratulations!** Your Green Pizza repository is fully set up with comprehensive evidence management documentation.
+Welcome to Green Pizza! This is a complete JFrog Evidence Management demonstration project with Application/Application Version integration.
 
 ---
 
-## ✅ What's Been Done
+## 📚 Quick Navigation
 
-### 1. GitHub Repository Setup
-- ✅ Code pushed to: https://github.com/omrilo/green-pizza
-- ✅ Workflow configured for Application & Application Version
-- ✅ All documentation committed and versioned
+### 🎯 **Start Here First:**
+1. **[EVIDENCE-OVERVIEW.md](EVIDENCE-OVERVIEW.md)** - Complete evidence architecture and overview
+2. **[GITHUB-SETUP-CHECKLIST.md](GITHUB-SETUP-CHECKLIST.md)** - Step-by-step setup guide
+3. **[QUICKSTART.md](QUICKSTART.md)** - 5-minute quick start
 
-### 2. Evidence Architecture Redesigned
-- ✅ Changed from Release Bundles to **Application/Application Version**
-- ✅ 7 evidence types documented and organized by subject level:
-  - **Package Level** (5): PROVENANCE, JUNIT, JIRA, CYCLONEDX, VEX
-  - **Build Level** (1): SONAR
-  - **Application Version Level** (1): CYPRESS
+### 📖 **Evidence Guides (Detailed):**
+Choose the evidence types you need:
 
-### 3. Complete Documentation Created
+| Evidence Type | Subject | Doc | Required | Time |
+|--------------|---------|-----|----------|------|
+| **Provenance (SLSA)** | Package | [PROVENANCE.md](evidence/PROVENANCE.md) | ✅ Yes | 5 min |
+| **JUnit Tests** | Package | [JUNIT.md](evidence/JUNIT.md) | ✅ Yes | 10 min |
+| **Jira Tickets** | Package | [JIRA.md](evidence/JIRA.md) | ⚪ Optional | 15 min |
+| **CycloneDX SBOM** | Package | [CYCLONEDX.md](evidence/CYCLONEDX.md) | ✅ Yes | 5 min |
+| **VEX** | Package | [VEX.md](evidence/VEX.md) | ⚪ Optional | 15 min |
+| **Sonar Analysis** | Build | [SONAR.md](evidence/SONAR.md) | ⚪ Optional | 20 min |
+| **Cypress E2E** | Version | [CYPRESS.md](evidence/CYPRESS.md) | ✅ Yes | 10 min |
+
+### 🔧 **Workflows:**
+- **[.github/workflows/evidence/README.md](.github/workflows/evidence/README.md)** - Modular workflows documentation
+- **[build-with-all-evidence.yml](.github/workflows/build-with-all-evidence.yml)** - Main orchestrator workflow
+- Individual workflows in `.github/workflows/evidence/` directory
+
+### 🎬 **Demo & Presentation:**
+- **[DEMO-GUIDE.md](DEMO-GUIDE.md)** - Complete demo script for presentations
+
+---
+
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│           Application Version: green-pizza v123             │
+│                                                             │
+│  Evidence: Cypress E2E Tests (QA Stage)                    │
+│  Status: Ready for promotion                               │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         │ Links to
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│              Build: green-pizza-build #123                  │
+│                                                             │
+│  Evidence: Sonar Static Analysis                           │
+│  Contains: Docker image + dependencies                     │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         │ Contains
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│         Package: green-pizza-docker-dev:123                 │
+│                                                             │
+│  Evidence:                                                  │
+│    ✅ Provenance (SLSA)         - Who, what, when          │
+│    ✅ JUnit Tests               - Unit test results        │
+│    ✅ Jira Tickets              - PIZZA-101, PIZZA-102     │
+│    ✅ CycloneDX SBOM            - All components           │
+│    ✅ VEX                       - Vulnerability status     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## ⚡ Quick Start (3 Options)
+
+### Option 1: Run Everything (Recommended for First Time)
+
+```bash
+# 1. Fork/clone this repository
+git clone https://github.com/omrilo/green-pizza.git
+cd green-pizza
+
+# 2. Configure GitHub Secrets & Variables
+# Follow GITHUB-SETUP-CHECKLIST.md
+
+# 3. Push to trigger workflow
+git push origin main
+
+# 4. Watch the build in GitHub Actions
+# All evidence will be attached automatically
+```
+
+### Option 2: Test Individual Evidence Types
+
+```bash
+# Test one evidence type at a time
+gh workflow run package-provenance.yml \
+  -f image_name=green-pizza \
+  -f build_number=123 \
+  -f docker_repo=green-pizza-docker-dev
+
+# See .github/workflows/evidence/README.md for all options
+```
+
+### Option 3: Test Locally First
+
+```bash
+# Install dependencies
+npm install
+
+# Run unit tests
+npm test
+
+# Run app locally
+npm start
+
+# Run E2E tests (in another terminal)
+npm run cypress:run
+```
+
+---
+
+## 📋 What You Need
+
+### Required (Core Setup):
+- ✅ GitHub account
+- ✅ JFrog Artifactory instance
+- ✅ JFrog access token
+- ✅ Private key for signing evidence
+- ✅ Docker repository in Artifactory: `green-pizza-docker-dev`
+- ✅ Environments in Artifactory: DEV, QA, PROD
+
+### Optional (Enhanced Evidence):
+- ⚪ Jira account (for Jira evidence)
+- ⚪ SonarQube/SonarCloud (for Sonar evidence)
+
+---
+
+## 🎯 Evidence Implementation Path
+
+### Phase 1: Core Evidence (Start Here)
+1. ✅ **Provenance** - Automatic from GitHub Actions
+2. ✅ **JUnit** - Run tests, attach results
+3. ✅ **CycloneDX** - Automatic from Xray
+4. ✅ **Cypress** - E2E testing
+
+**Time:** ~30 minutes  
+**Result:** Production-ready evidence pipeline
+
+### Phase 2: Enhanced Evidence
+5. ⚪ **Jira** - Link commits to tickets
+6. ⚪ **Sonar** - Static analysis
+
+**Time:** ~35 minutes  
+**Result:** Complete quality & traceability
+
+### Phase 3: Advanced Evidence
+7. ⚪ **VEX** - Vulnerability justifications
+
+**Time:** ~15 minutes per CVE  
+**Result:** Production compliance ready
+
+---
+
+## 🔄 Workflow Options
+
+### Orchestrator Workflow (All Evidence)
+**File:** `.github/workflows/build-with-all-evidence.yml`
+
+Runs all evidence types automatically:
+```bash
+git push origin main
+# Or
+gh workflow run "Build with All Evidence (Orchestrator)"
+```
+
+### Individual Workflows (Modular)
+**Directory:** `.github/workflows/evidence/`
+
+Run specific evidence types:
+```bash
+# Package evidence
+gh workflow run package-provenance.yml -f build_number=123
+gh workflow run package-junit.yml -f build_number=123
+gh workflow run package-jira.yml -f build_number=123
+gh workflow run package-cyclonedx.yml -f build_number=123
+gh workflow run package-vex.yml -f build_number=123
+
+# Build evidence
+gh workflow run build-sonar.yml -f build_number=123
+
+# Application Version evidence
+gh workflow run version-cypress.yml -f app_version=v123
+```
+
+---
+
+## 📊 View Evidence
+
+### In Artifactory UI
+
+**Package Evidence:**
+1. Navigate to: **Artifactory** → **Artifacts** → `green-pizza-docker-dev/green-pizza/<version>`
+2. Click manifest file
+3. Click **"Evidence"** tab
+
+**Build Evidence:**
+1. Navigate to: **Artifactory** → **Builds** → `green-pizza-build #<number>`
+2. Click **"Evidence"** tab
+
+**Application Version Evidence:**
+1. Navigate to: **Application** → **Security** → `green-pizza`
+2. Select version: `v<number>`
+3. Click **"Evidence"** tab
+
+### Using JFrog CLI
+
+```bash
+# View package evidence
+jf evd show \
+  --package-name green-pizza \
+  --package-version 123 \
+  --package-repo-name green-pizza-docker-dev
+
+# View build evidence
+jf evd show \
+  --build-name green-pizza-build \
+  --build-number 123
+
+# View app version evidence
+jf evd show \
+  --app green-pizza \
+  --app-version v123
+```
+
+---
+
+## 🎬 Demo This Project
+
+Perfect for demonstrating to:
+- DevOps teams
+- Security teams
+- Management
+- Customers requiring compliance
+
+**Follow:** [DEMO-GUIDE.md](DEMO-GUIDE.md) for complete demo script
+
+**Key Demo Points:**
+1. Show automated evidence generation
+2. Display evidence in Artifactory UI
+3. Explain 3-level architecture (Package → Build → App Version)
+4. Demonstrate promotion policies
+5. Show complete audit trail
+
+---
+
+## 📁 Project Structure
 
 ```
 green-pizza/
-├── START-HERE.md                    ← You are here!
-├── EVIDENCE-OVERVIEW.md             ← Architecture & overview
-├── GITHUB-SETUP-CHECKLIST.md        ← Step-by-step setup guide
-├── DEMO-GUIDE.md                    ← Complete demo script
-├── README.md                        ← Updated for App Versions
-├── evidence/                        ← Individual evidence guides
-│   ├── PROVENANCE.md               ← GitHub SLSA (5 min setup)
-│   ├── JUNIT.md                    ← Unit tests (10 min setup)
-│   ├── JIRA.md                     ← Task linking (15 min setup)
-│   ├── CYCLONEDX.md                ← SBOM (5 min setup)
-│   ├── VEX.md                      ← Vulnerability docs (15 min)
-│   ├── SONAR.md                    ← Static analysis (20 min)
-│   └── CYPRESS.md                  ← E2E tests (10 min)
-└── .github/workflows/
-    └── build-with-evidence.yml      ← Updated workflow
+├── START-HERE.md (this file)
+├── EVIDENCE-OVERVIEW.md        # Complete architecture
+├── GITHUB-SETUP-CHECKLIST.md   # Setup instructions
+├── DEMO-GUIDE.md                # Demo script
+├── QUICKSTART.md                # 5-minute guide
+├── README.md                    # Project overview
+│
+├── evidence/                    # Evidence documentation
+│   ├── PROVENANCE.md
+│   ├── JUNIT.md
+│   ├── JIRA.md
+│   ├── CYCLONEDX.md
+│   ├── VEX.md
+│   ├── SONAR.md
+│   └── CYPRESS.md
+│
+├── .github/workflows/
+│   ├── build-with-all-evidence.yml    # Main orchestrator
+│   ├── build-with-evidence.yml        # Original monolithic
+│   └── evidence/                      # Modular workflows
+│       ├── README.md
+│       ├── package-provenance.yml
+│       ├── package-junit.yml
+│       ├── package-jira.yml
+│       ├── package-cyclonedx.yml
+│       ├── package-vex.yml
+│       ├── build-sonar.yml
+│       └── version-cypress.yml
+│
+├── src/
+│   └── server.js              # Application code
+├── tests/
+│   └── server.test.js         # Unit tests
+├── cypress/
+│   └── e2e/
+│       └── pizza-app.cy.js    # E2E tests
+│
+└── scripts/
+    └── jira-evidence/         # Jira extraction tool
 ```
 
 ---
 
-## 🎯 Quick Start (Choose Your Path)
+## 🆘 Getting Help
 
-### Path A: Demo First (Recommended for Presentations)
-1. Read: [DEMO-GUIDE.md](DEMO-GUIDE.md)
-2. Review: [EVIDENCE-OVERVIEW.md](EVIDENCE-OVERVIEW.md)
-3. Follow setup when ready: [GITHUB-SETUP-CHECKLIST.md](GITHUB-SETUP-CHECKLIST.md)
+### Quick Answers:
+- **Setup Issues:** See [GITHUB-SETUP-CHECKLIST.md](GITHUB-SETUP-CHECKLIST.md)
+- **Evidence Specific:** See individual guides in `evidence/` directory
+- **Workflow Issues:** See [.github/workflows/evidence/README.md](.github/workflows/evidence/README.md)
 
-### Path B: Implement Now (Recommended for Development)
-1. Start here: [GITHUB-SETUP-CHECKLIST.md](GITHUB-SETUP-CHECKLIST.md)
-2. Implement evidence by phase:
-   - **Phase 1 (Start):** PROVENANCE → JUNIT → CYCLONEDX → CYPRESS
-   - **Phase 2 (Enhanced):** SONAR → JIRA
-   - **Phase 3 (Advanced):** VEX
+### Troubleshooting:
+Each evidence guide includes a **Troubleshooting** section with common issues and solutions.
 
-### Path C: Specific Evidence Type
-Jump directly to any evidence guide in `evidence/` folder:
-- Need SBOM? → [evidence/CYCLONEDX.md](evidence/CYCLONEDX.md)
-- Need Jira integration? → [evidence/JIRA.md](evidence/JIRA.md)
-- Need E2E tests? → [evidence/CYPRESS.md](evidence/CYPRESS.md)
+### Resources:
+- [JFrog Evidence Management Docs](https://jfrog.com/help/r/jfrog-artifactory-documentation/evidence-management)
+- [SLSA Framework](https://slsa.dev/)
+- [CycloneDX](https://cyclonedx.org/)
+- [OpenVEX](https://openvex.dev/)
 
 ---
 
-## 📊 Evidence Summary Table
+## ✅ Success Checklist
 
-| Evidence Type | Subject Level | Setup Time | Complexity | Required | Guide |
-|--------------|---------------|------------|------------|----------|-------|
-| **Provenance** | Package | 5 min | Low | ✅ Yes | [PROVENANCE.md](evidence/PROVENANCE.md) |
-| **JUnit** | Package | 10 min | Low | ✅ Yes | [JUNIT.md](evidence/JUNIT.md) |
-| **CycloneDX** | Package | 5 min | Low | ✅ Yes | [CYCLONEDX.md](evidence/CYCLONEDX.md) |
-| **Cypress** | Version | 10 min | Low | ✅ Yes | [CYPRESS.md](evidence/CYPRESS.md) |
-| **Jira** | Package | 15 min | Medium | ⚪ Optional | [JIRA.md](evidence/JIRA.md) |
-| **Sonar** | Build | 20 min | Medium | ⚪ Optional | [SONAR.md](evidence/SONAR.md) |
-| **VEX** | Package | 15 min | Medium | ⚪ Optional | [VEX.md](evidence/VEX.md) |
+### Initial Setup
+- [ ] Repository cloned/forked
+- [ ] GitHub secrets configured
+- [ ] GitHub variables configured
+- [ ] JFrog Artifactory accessible
+- [ ] Docker repository created
+- [ ] Environments created (DEV, QA, PROD)
 
----
+### First Build
+- [ ] Workflow triggered
+- [ ] Docker image built and pushed
+- [ ] Build Info published
+- [ ] Application Version created
+- [ ] Evidence attached (check Artifactory)
+- [ ] Promoted to DEV
 
-## 🔧 Immediate Next Steps
-
-### Step 1: Configure GitHub (15 minutes)
-
-**Add Secrets** (Settings → Secrets → Actions):
-```
-ARTIFACTORY_ACCESS_TOKEN  = (from JFrog)
-PRIVATE_KEY               = (generate with: openssl genrsa -out key.pem 2048)
-JF_USER                   = (your JFrog username)
-```
-
-**Add Variables** (Settings → Variables → Actions):
-```
-ARTIFACTORY_URL = your-instance.jfrog.io
-```
-
-### Step 2: Configure Artifactory (10 minutes)
-
-1. **Create Docker Repository:**
-   - Name: `green-pizza-docker-dev`
-   - Type: Docker (Local)
-
-2. **Create Signing Key:**
-   - Admin → Security → Keys Management
-   - Generate: `RSA-SIGNING` (RSA 2048)
-
-3. **Create Environments:**
-   - Admin → Environments
-   - Create: `DEV`, `QA`, `PROD`
-
-### Step 3: Run Your First Build (5 minutes)
-
-1. Go to: https://github.com/omrilo/green-pizza/actions
-2. Select: **"Build Green Pizza with Evidence"**
-3. Click: **"Run workflow"**
-4. Watch it build! ⚡
-
-### Step 4: View Evidence (5 minutes)
-
-**View in Artifactory:**
-1. **Package Evidence:**
-   - Artifactory → Artifacts → `green-pizza-docker-dev/green-pizza/<build-number>`
-   - Evidence tab shows: Provenance, JUnit, Jira (if enabled)
-
-2. **Build Evidence:**
-   - Artifactory → Builds → `green-pizza-build #<number>`
-   - Evidence tab shows: Build signature, Sonar (if enabled)
-
-3. **Application Version Evidence:**
-   - Application → Security → `green-pizza` → `v<build-number>`
-   - Evidence tab shows: Cypress tests, deployment info
-
----
-
-## 📚 Documentation Structure
-
-### For Setup & Configuration
-- **GITHUB-SETUP-CHECKLIST.md** - Complete setup instructions
-- **evidence/*.md** - Individual evidence type guides
-
-### For Understanding
-- **EVIDENCE-OVERVIEW.md** - Architecture and flow
-- **README.md** - Project overview and features
-
-### For Demos & Presentations
-- **DEMO-GUIDE.md** - Complete demo script (15-20 min)
+### Verification
+- [ ] Evidence visible in Artifactory UI
+- [ ] All required evidence types present
+- [ ] Evidence signed and verified
+- [ ] GitHub Actions summary looks good
 
 ---
 
 ## 🎓 Learning Path
 
-### Beginner (Day 1)
-1. Read: README.md (overview)
-2. Read: EVIDENCE-OVERVIEW.md (architecture)
-3. Complete: GITHUB-SETUP-CHECKLIST.md (setup)
-4. Implement: PROVENANCE + JUNIT (Phase 1)
+### Day 1: Basics
+1. Read [EVIDENCE-OVERVIEW.md](EVIDENCE-OVERVIEW.md)
+2. Follow [QUICKSTART.md](QUICKSTART.md)
+3. Run your first build
+4. View evidence in Artifactory
 
-### Intermediate (Day 2-3)
-1. Read individual evidence guides
-2. Implement: CYCLONEDX + CYPRESS
-3. Test: Run builds and view evidence
-4. Create: Promotion policies
+### Day 2: Core Evidence
+1. Study [PROVENANCE.md](evidence/PROVENANCE.md)
+2. Study [JUNIT.md](evidence/JUNIT.md)
+3. Study [CYPRESS.md](evidence/CYPRESS.md)
+4. Test individual workflows
 
-### Advanced (Week 2)
-1. Implement: SONAR + JIRA
-2. Implement: VEX documentation
-3. Customize: Add custom evidence types
-4. Optimize: Fine-tune policies and workflows
+### Day 3: Enhanced Evidence
+1. Study [JIRA.md](evidence/JIRA.md)
+2. Study [SONAR.md](evidence/SONAR.md)
+3. Study [CYCLONEDX.md](evidence/CYCLONEDX.md)
+4. Study [VEX.md](evidence/VEX.md)
 
----
-
-## 💡 Key Concepts
-
-### Application vs Release Bundle
-
-**Before (Release Bundles):**
-```
-Package → Build → Release Bundle → Environments
-```
-
-**Now (Application Version):**
-```
-Package → Build → Application Version → Environments
-         ↓         ↓                  ↓
-     Evidence  Evidence           Evidence
-```
-
-### Evidence Levels
-
-1. **Package** - Attached to Docker image
-   - What: Artifact-specific evidence (tests, SBOM, provenance)
-   - When: During build and push
-
-2. **Build** - Attached to Build Info
-   - What: Build process evidence (Sonar analysis)
-   - When: After build completes
-
-3. **Application Version** - Attached to Version
-   - What: Release-level evidence (E2E tests, deployment)
-   - When: During QA promotion
+### Day 4: Advanced
+1. Create custom policies
+2. Customize workflows
+3. Add your own evidence types
+4. Prepare demo presentation
 
 ---
 
-## 🚀 Success Criteria
+## 💡 Best Practices
 
-### Phase 1: Core Evidence (Week 1)
-- [ ] GitHub workflow runs successfully
-- [ ] Docker image built and pushed
-- [ ] Provenance evidence attached
-- [ ] JUnit tests run and evidence attached
-- [ ] SBOM generated from Xray
-- [ ] Application Version created
-- [ ] Cypress tests run
-- [ ] Evidence visible in Artifactory
-
-### Phase 2: Enhanced Evidence (Week 2)
-- [ ] Sonar integration working
-- [ ] Jira tickets linked to builds
-- [ ] Quality gates configured
-- [ ] Promotion policies created
-
-### Phase 3: Production Ready (Week 3)
-- [ ] VEX documents for vulnerabilities
-- [ ] All policies tested
-- [ ] Demo completed successfully
-- [ ] Team trained on workflow
-
----
-
-## 🔗 Quick Links
-
-| Resource | Link |
-|----------|------|
-| **GitHub Repo** | https://github.com/omrilo/green-pizza |
-| **JFrog Docs** | https://jfrog.com/help/r/jfrog-artifactory-documentation/evidence-management |
-| **SLSA Framework** | https://slsa.dev/ |
-| **CycloneDX** | https://cyclonedx.org/ |
-| **OpenVEX** | https://openvex.dev/ |
-| **Cypress** | https://docs.cypress.io/ |
-| **SonarQube** | https://docs.sonarqube.org/ |
-
----
-
-## 🆘 Need Help?
-
-### Common Issues
-
-**Q: Where do I start?**  
-A: Follow [GITHUB-SETUP-CHECKLIST.md](GITHUB-SETUP-CHECKLIST.md) step-by-step.
-
-**Q: Which evidence types are required?**  
-A: Core: Provenance, JUnit, CycloneDX, Cypress. Optional: Jira, Sonar, VEX.
-
-**Q: Evidence not showing in Artifactory?**  
-A: Check workflow logs, verify secrets are set, ensure `PRIVATE_KEY` is correct.
-
-**Q: How do I demo this?**  
-A: Use [DEMO-GUIDE.md](DEMO-GUIDE.md) - complete 15-20 min presentation script.
-
-**Q: Can I customize evidence types?**  
-A: Yes! See individual guides for customization options.
+✅ **Start Simple:** Begin with Phase 1 evidence only  
+✅ **Test Individually:** Run workflows separately before using orchestrator  
+✅ **Verify Always:** Check Artifactory UI after each workflow  
+✅ **Document Decisions:** Update VEX with security team input  
+✅ **Monitor Performance:** Track workflow execution times  
+✅ **Review Evidence:** Periodically audit attached evidence  
+✅ **Update Policies:** Adjust promotion rules as needed  
 
 ---
 
 ## 🎉 You're Ready!
 
-Everything is set up and documented. Choose your path above and start implementing!
+**Next Step:** Choose your path:
 
-**Recommended Next Action:**
-```bash
-# Option 1: Start implementing
-open GITHUB-SETUP-CHECKLIST.md
-
-# Option 2: Prepare a demo
-open DEMO-GUIDE.md
-
-# Option 3: Understand the architecture
-open EVIDENCE-OVERVIEW.md
-```
+→ **Quick Start:** Jump to [QUICKSTART.md](QUICKSTART.md)  
+→ **Complete Setup:** Follow [GITHUB-SETUP-CHECKLIST.md](GITHUB-SETUP-CHECKLIST.md)  
+→ **Understand Architecture:** Read [EVIDENCE-OVERVIEW.md](EVIDENCE-OVERVIEW.md)  
+→ **Demo Mode:** Use [DEMO-GUIDE.md](DEMO-GUIDE.md)
 
 ---
 
-**Questions?** All documentation is in this repository. Each guide is self-contained with prerequisites, implementation, and troubleshooting.
+**Questions? Issues? Feedback?**  
+Open an issue on GitHub or check the individual evidence guides for detailed troubleshooting.
 
-**Ready to build?** Go to: https://github.com/omrilo/green-pizza/actions
-
-**Happy coding! 🍕🚀**
+**Happy Evidence Building! 🍕🚀**
