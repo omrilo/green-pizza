@@ -16,6 +16,16 @@ jobs:
         env:
           TOKEN: ${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}
 
-      - name: Try Docker Login
+      - name: Try Docker Login (Method 1 - admin user)
         run: |
           echo "${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}" | docker login ${{ vars.ARTIFACTORY_URL }} -u ${{ secrets.JF_USER }} --password-stdin
+        continue-on-error: true
+
+      - name: Try Docker Login (Method 2 - token as username)
+        run: |
+          echo "${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}" | docker login ${{ vars.ARTIFACTORY_URL }} -u ${{ secrets.ARTIFACTORY_ACCESS_TOKEN }} --password-stdin
+        continue-on-error: true
+
+      - name: Try Docker Login (Method 3 - just token)
+        run: |
+          docker login ${{ vars.ARTIFACTORY_URL }} -u token -p ${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}
