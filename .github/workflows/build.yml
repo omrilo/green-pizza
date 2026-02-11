@@ -36,6 +36,15 @@ jobs:
           echo "app_version=$APP_VERSION" >> $GITHUB_OUTPUT
           echo "Application Version: $APP_VERSION" >> $GITHUB_STEP_SUMMARY
 
+      - name: Debug - Check values (tokens will be masked)
+        run: |
+          echo "Registry: ${{ vars.ARTIFACTORY_URL }}"
+          echo "Username length: ${#JF_USER}"
+          echo "Token length: ${#TOKEN}"
+        env:
+          JF_USER: ${{ secrets.JF_USER }}
+          TOKEN: ${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}
+
       - name: Login to Artifactory Docker Registry (BEFORE JFrog CLI)
         run: |
           echo "${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}" | docker login ${{ vars.ARTIFACTORY_URL }} -u ${{ secrets.JF_USER }} --password-stdin
