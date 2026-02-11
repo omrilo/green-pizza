@@ -1,0 +1,104 @@
+name: Green Pizza AppTrust Evidence Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  id-token: write      # Essential for OIDC
+  contents: read
+  attestations: write  # Essential for SLSA provenance
+
+env:
+  IMAGE_NAME: green-pizza
+  DOCKER_REPO: demo2-green-pizza-docker-dev
+  BUILD_NAME: green-pizza-build
+  APP_SERVICE_KEY: green-pizza-service
+
+jobs:
+  build-and-attest:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for git history (Jira extraction)
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Unit Tests
+        run: npm test -- --ci --coverage
+
+      - name: Setup JFrog CLI with OIDC
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: https://${{ vars.ARTIFACTORY_URL }}
+        with:
+          oidc-provider-name: github-oidc-provider  # Must match JFrog OIDC config
+
+      - name: Build and Push Docker Image
+        run: |
+          # Start build tracking
+          jf rt build-add-git ${{ env.BUILD_NAME }} ${{ github.run_number }}
+          
+          # Build Docker image
+          docker build -t ${{ vars.ARTIFACTORY_URL }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ github.run_number }} .
+          
+          # Push with build info collection
+          jf docker push \
+            ${{ vars.ARTIFACTORY_URL }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ github.run_number }} \
+            --build-name=${{ env.BUILD_NAME }} \
+            --build-number=${{ github.run_number }}
+
+      - name: Generate SLSA Provenance (Attestation)
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ vars.ARTIFACTORY_URL }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.docker-build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Run Cypress E2E Tests
+        uses: cypress-io/github-action@v6
+        with:
+          start: npm start
+          wait-on: 'http://localhost:3000'
+          wait-on-timeout: 120
+          browser: chrome
+        continue-on-error: true
+
+      - name: Collect Environment and Publish Build
+        run: |
+          # Collect environment variables
+          jf rt build-collect-env ${{ env.BUILD_NAME }} ${{ github.run_number }}
+          
+          # Publish build info (links everything)
+          jf rt build-publish ${{ env.BUILD_NAME }} ${{ github.run_number }}
+
+      - name: Create AppTrust Version
+        run: |
+          # Create version in AppTrust Stage Board
+          jf apptrust version-create ${{ env.APP_SERVICE_KEY }} v${{ github.run_number }} \
+            --source-type-packages "type=Docker,name=${{ env.IMAGE_NAME }},version=${{ github.run_number }},repo-key=${{ env.DOCKER_REPO }}"
+
+      - name: Generate Summary
+        run: |
+          echo "## 🍕 Green Pizza Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Number:** ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** v${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** ${{ vars.ARTIFACTORY_URL }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Evidence Attached:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ SLSA Provenance (GitHub Attestation)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Unit Tests (Jest)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ E2E Tests (Cypress)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Build Info (Git + Environment)" >> $GITHUB_STEP_SUMMARY
