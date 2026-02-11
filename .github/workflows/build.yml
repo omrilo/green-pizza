@@ -1,4 +1,4 @@
-name: Build with All Evidence (Orchestrator)
+name: Build Green Pizza
 
 on:
   push:
