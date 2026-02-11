@@ -40,6 +40,8 @@ metadata.json
 bundle-spec.json
 *-sign.json
 *-evidence.json
+.jfrog/
+*.pem
 
 # Jira evidence
 scripts/jira-evidence/jira-results.json
