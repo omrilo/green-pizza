@@ -9,7 +9,7 @@ on:
 
 env:
   IMAGE_NAME: green-pizza
-  DOCKER_REPO: green-pizza-docker-dev
+  DOCKER_REPO: demo2-green-pizza-docker-dev
   BUILD_NAME: green-pizza-build
   APP_NAME: green-pizza
   APP_VERSION_PREFIX: v
