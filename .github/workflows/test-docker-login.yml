@@ -1,0 +1,21 @@
+name: Test Docker Login
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-login:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Show what we're using
+        run: |
+          echo "Registry: ${{ vars.ARTIFACTORY_URL }}"
+          echo "Username: ${{ secrets.JF_USER }}"
+          echo "Token first 10 chars: ${TOKEN:0:10}..."
+        env:
+          TOKEN: ${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}
+
+      - name: Try Docker Login
+        run: |
+          echo "${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}" | docker login ${{ vars.ARTIFACTORY_URL }} -u ${{ secrets.JF_USER }} --password-stdin
